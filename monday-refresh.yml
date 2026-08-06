@@ -1,0 +1,33 @@
+name: Monday FCFC refresh
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 0 * * 1" # Monday 08:10 Perth (UTC+8)
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - run: python refresh_data.py
+      - name: Commit refreshed cache
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fcfc_cache.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Weekly FCFC statistics refresh"
+            git push
+          fi
