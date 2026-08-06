@@ -1,0 +1,17 @@
+{
+  "afl_matches": [],
+  "afl_next_opponents": {},
+  "errors": [],
+  "fixtures": [],
+  "games": [],
+  "lineup_errors": [],
+  "lineups_refreshed_at": null,
+  "next_opponents": {},
+  "opponent_overrides": {},
+  "refresh_summary": {},
+  "refreshed_at": null,
+  "schema_version": 5,
+  "season": 2026,
+  "statistics_source": "AFL Tables",
+  "team_status": {}
+}
