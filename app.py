@@ -216,6 +216,7 @@ def main() -> None:
     import streamlit as st
 
     from afl_lineups import AFLLineupClient, STATUS_LABELS, eligible_players, lineup_check_due, team_code
+    from match_centre_store import competition_week_key, load_match_centre_state, save_match_centre_state
     from fcfc_engine import (
         CACHE_PATH,
         ROLE_SLOTS,
@@ -241,6 +242,22 @@ def main() -> None:
     cache, cache_warning = load_cache()
     if cache_warning:
         st.warning(cache_warning)
+
+    try:
+        github_token = str(st.secrets.get("GITHUB_TOKEN", "") or "").strip()
+    except Exception:
+        github_token = ""
+
+    remote_match_state, match_storage_message = load_match_centre_state(github_token)
+    if remote_match_state is not None:
+        cache["match_centre"] = remote_match_state
+    else:
+        # Keep a local fallback for first setup, but never carry it across an FCFC week.
+        local_match_state = dict(cache.get("match_centre") or {})
+        local_week_key = str(local_match_state.get("week_key") or "")
+        if local_week_key and local_week_key != competition_week_key():
+            cache["match_centre"] = {}
+
     season = 2026
     games = list(cache.get("games") or [])
     statuses = dict(cache.get("team_status") or {})
@@ -551,6 +568,27 @@ def main() -> None:
         ordered_slots = ["SUPERSTUD", "FWD1", "FWD2", "MID1", "MID2", "MID3", "RUCK", "MARKER", "TACKLER", "FREE-KICKER"]
         slot_roles = {slot: role for slot, role in ROLE_SLOTS}
 
+        def persist_match_state(new_state: dict[str, object]) -> bool:
+            stored = dict(new_state)
+            stored["week_key"] = competition_week_key()
+            cache["match_centre"] = stored
+            save_cache(cache, CACHE_PATH)
+            ok, message = save_match_centre_state(stored, github_token)
+            if not ok:
+                st.error(
+                    "The teams were saved only to this Streamlit session, not to persistent storage. "
+                    + message
+                )
+            return ok
+
+        if match_storage_message and "cleared" in match_storage_message.lower():
+            st.info(match_storage_message)
+        elif not github_token:
+            st.warning(
+                "Persistent Match Centre storage is not configured yet. Add GITHUB_TOKEN to Streamlit secrets once; "
+                "after that, submitted teams will survive app restarts and deployments."
+            )
+
         # Live scoring is shown first in Match Centre so the current matchup is visible immediately.
         def score_selection(saved: dict[str, object], opponent: bool = False) -> dict:
             # Match Centre scores only the 10 submitted starters. Interchange players
@@ -682,12 +720,11 @@ def main() -> None:
                         sides_applied.append("the opponent's team")
 
                 if sides_applied:
-                    cache["match_centre"] = {
+                    persist_match_state({
                         "round": selected_round,
                         "my_team": parsed_my,
                         "opponent_team": parsed_opponent,
-                    }
-                    save_cache(cache, CACHE_PATH)
+                    })
                     for key in list(st.session_state):
                         if (
                             key.startswith("mc_my_")
@@ -731,14 +768,14 @@ def main() -> None:
                 )
                 opponent_team_edit[slot] = {"player": name.strip(), "club": club}
         if st.button("Save submitted teams", type="primary"):
-            cache["match_centre"] = {
+            ok = persist_match_state({
                 "round": selected_round,
                 "my_team": my_team_edit,
                 "opponent_team": opponent_team_edit,
-            }
-            save_cache(cache, CACHE_PATH)
-            st.success("Both submitted teams were saved.")
-            st.rerun()
+            })
+            if ok:
+                st.success("Both submitted teams were saved persistently through Wednesday night.")
+                st.rerun()
 
 
     with tabs[3]:
